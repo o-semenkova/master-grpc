@@ -12,8 +12,8 @@ public class AppendMessageServiceImpl {
     ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", 9093)
                                                   .usePlaintext()
                                                   .build();
-    AppendMessageServiceGrpc.AppendMessageServiceBlockingStub stub_1 = AppendMessageServiceGrpc.newBlockingStub(channel);
-    LogMessageAck response = stub_1.append(msg);
+    AppendMessageServiceGrpc.AppendMessageServiceBlockingStub stub = AppendMessageServiceGrpc.newBlockingStub(channel);
+    LogMessageAck response = stub.append(msg);
     channel.shutdownNow();
 
     return response;
