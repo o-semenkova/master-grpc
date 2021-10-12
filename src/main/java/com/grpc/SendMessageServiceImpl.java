@@ -13,7 +13,7 @@ public class SendMessageServiceImpl extends SendMessageServiceGrpc.SendMessageSe
 
   private ConcurrentNavigableMap<Long, String> messages = new ConcurrentSkipListMap<>();
   private AppendMessageServiceImpl appendMessageService;
-  private Long counter;
+  private Long counter = 1L;
 
   public SendMessageServiceImpl(AppendMessageServiceImpl appendMessageService) {
     this.appendMessageService = appendMessageService;
@@ -23,9 +23,12 @@ public class SendMessageServiceImpl extends SendMessageServiceGrpc.SendMessageSe
     Long internalId = counter++;
     LogMessage msg = LogMessage.newBuilder().setId(internalId).setText(request.getText()).build();
     messages.put(internalId, request.getText());
-    LogMessageAck ack = appendMessageService.append(msg);
-    responseObserver.onNext(ack);
-    responseObserver.onCompleted();
+    String appendStatus = appendMessageService.append(msg);
+    LogMessageAck ack = LogMessageAck.newBuilder().setStatus(appendStatus).build();
+    if(ack.getStatus().equals("OK")) {
+      responseObserver.onNext(ack);
+      responseObserver.onCompleted();
+    }
   }
 
   private String convertWithStream(Map<Long, String> map) {
