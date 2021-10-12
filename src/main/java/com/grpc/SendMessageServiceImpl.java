@@ -1,7 +1,8 @@
 package com.grpc;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Collectors;
 
 import io.grpc.stub.StreamObserver;
@@ -10,18 +11,20 @@ import net.devh.boot.grpc.server.service.GrpcService;
 @GrpcService
 public class SendMessageServiceImpl extends SendMessageServiceGrpc.SendMessageServiceImplBase {
 
-  private HashMap<Long, String> messages = new HashMap<>();
+  private ConcurrentNavigableMap<Long, String> messages = new ConcurrentSkipListMap<>();
   private AppendMessageServiceImpl appendMessageService;
+  private Long counter;
 
   public SendMessageServiceImpl(AppendMessageServiceImpl appendMessageService) {
     this.appendMessageService = appendMessageService;
   }
 
   public void send(LogMessage request, StreamObserver<LogMessageAck> responseObserver) {
-    LogMessage msg = LogMessage.newBuilder().setId(request.getId()).setText(request.getText()).build();
-    messages.put(request.getId(), request.getText());
-    LogMessageAck ack1 = appendMessageService.append(msg);
-    responseObserver.onNext(ack1);
+    Long internalId = counter++;
+    LogMessage msg = LogMessage.newBuilder().setId(internalId).setText(request.getText()).build();
+    messages.put(internalId, request.getText());
+    LogMessageAck ack = appendMessageService.append(msg);
+    responseObserver.onNext(ack);
     responseObserver.onCompleted();
   }
 
