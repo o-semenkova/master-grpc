@@ -11,7 +11,7 @@ import net.devh.boot.grpc.server.service.GrpcService;
 @GrpcService
 public class SendMessageServiceImpl extends SendMessageServiceGrpc.SendMessageServiceImplBase {
 
-  private ConcurrentNavigableMap<Long, String> messages = new ConcurrentSkipListMap<>();
+  private ConcurrentNavigableMap<Long, Integer> messages = new ConcurrentSkipListMap<>();
   private AppendMessageServiceImpl appendMessageService;
   private Long counter = 1L;
 
@@ -21,17 +21,27 @@ public class SendMessageServiceImpl extends SendMessageServiceGrpc.SendMessageSe
 
   public void send(LogMessage request, StreamObserver<LogMessageAck> responseObserver) {
     Long internalId = counter++;
-    LogMessage msg = LogMessage.newBuilder().setId(internalId).setText(request.getText()).build();
-    messages.put(internalId, request.getText());
-    String appendStatus = appendMessageService.append(msg);
-    LogMessageAck ack = LogMessageAck.newBuilder().setStatus(appendStatus).build();
-    if(ack.getStatus().equals("OK")) {
+    LogMessage msg = LogMessage.newBuilder().setId(internalId).setW(request.getW()).build();
+    messages.put(internalId, request.getW());
+    LogMessageAck ack;
+    if (msg.getW() == 1) {
+      ack = LogMessageAck.newBuilder().setStatus("OK").build();
+      responseObserver.onNext(ack);
+      responseObserver.onCompleted();
+      appendMessageService.append(msg);
+    } else {
+      String status = appendMessageService.append(msg);
+      ack = LogMessageAck.newBuilder().setStatus(status).build();
       responseObserver.onNext(ack);
       responseObserver.onCompleted();
     }
+
+//    if (ack.getStatus().equals("OK")) {
+
+//    }
   }
 
-  private String convertWithStream(Map<Long, String> map) {
+  private String convertWithStream(Map<Long, Integer> map) {
     String mapAsString = map.keySet().stream()
                             .map(key -> key + "=" + map.get(key))
                             .collect(Collectors.joining(", ", "{", "}"));
