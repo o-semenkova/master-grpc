@@ -35,10 +35,6 @@ public class SendMessageServiceImpl extends SendMessageServiceGrpc.SendMessageSe
       responseObserver.onNext(ack);
       responseObserver.onCompleted();
     }
-
-//    if (ack.getStatus().equals("OK")) {
-
-//    }
   }
 
   private String convertWithStream(Map<Long, Integer> map) {
