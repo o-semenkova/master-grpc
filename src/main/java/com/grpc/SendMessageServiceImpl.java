@@ -3,6 +3,7 @@ package com.grpc;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
 import io.grpc.stub.StreamObserver;
@@ -21,20 +22,25 @@ public class SendMessageServiceImpl extends SendMessageServiceGrpc.SendMessageSe
 
   public void send(LogMessage request, StreamObserver<LogMessageAck> responseObserver) {
     Long internalId = counter++;
+    CountDownLatch latch = new CountDownLatch(request.getW());
     LogMessage msg = LogMessage.newBuilder().setId(internalId).setW(request.getW()).build();
     messages.put(internalId, request.getW());
-    LogMessageAck ack;
-    if (msg.getW() == 1) {
-      ack = LogMessageAck.newBuilder().setStatus("OK").build();
-      responseObserver.onNext(ack);
-      responseObserver.onCompleted();
-      appendMessageService.append(msg);
-    } else {
-      String status = appendMessageService.append(msg);
-      ack = LogMessageAck.newBuilder().setStatus(status).build();
-      responseObserver.onNext(ack);
-      responseObserver.onCompleted();
+    latch.countDown();
+    appendMessageService.append(msg, latch);
+    LogMessageAck ack = LogMessageAck.newBuilder().setStatus("OK").build();
+
+    try {
+      Thread.sleep(1000);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
     }
+    try {
+      latch.await();
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    }
+    responseObserver.onNext(ack);
+    responseObserver.onCompleted();
   }
 
   private String convertWithStream(Map<Long, Integer> map) {

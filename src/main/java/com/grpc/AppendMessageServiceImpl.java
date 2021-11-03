@@ -1,5 +1,6 @@
 package com.grpc;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -18,61 +19,68 @@ import io.grpc.ManagedChannelBuilder;
 @Service
 public class AppendMessageServiceImpl {
 
-  public String append(LogMessage msg) {
+  public String append(LogMessage msg, CountDownLatch latch) {
 
-    ExecutorService executor = Executors.newFixedThreadPool(2);
-    ListenableFuture<LogMessageAck> f1 = appendMsg("secondary-grpc", 9093, msg, 1000, executor);
-    ListenableFuture<LogMessageAck> f2 = appendMsg("secondary-grpc-second", 9094, msg, 1000, executor);
+    int writeConcern = msg.getW();
+    if(writeConcern == 1) {
+      appendMsg("secondary-grpc", 9093, msg);
+      appendMsg("secondary-grpc-second", 9094, msg);
+    } else if (writeConcern == 2) {
+      appendMsg("secondary-grpc", 9093, msg, latch);
+      appendMsg("secondary-grpc-second", 9094, msg);
+    } else {
+      appendMsg("secondary-grpc", 9093, msg, latch);
+      appendMsg("secondary-grpc-second", 9094, msg, latch);
+    }
 
-    executor.shutdown();
     try {
-      executor.awaitTermination(2, TimeUnit.SECONDS);
+      latch.await();
     } catch (InterruptedException e) {
       e.printStackTrace();
     }
 
-    try {
-      if(msg.getW() == 3) {
-        if(f1.get(150000, TimeUnit.MILLISECONDS) != null && f2.get(150000, TimeUnit.MILLISECONDS) != null){
-          return LogMessageAck.newBuilder().setStatus("OK").build().getStatus();
-        }
-      } else if(msg.getW() == 2) {
-        if(f1.get(150000, TimeUnit.MILLISECONDS) != null || f2.get(1000, TimeUnit.MILLISECONDS) != null){
-          return LogMessageAck.newBuilder().setStatus("OK").build().getStatus();
-        }
-      } else {
-        return LogMessageAck.newBuilder().setStatus("OK").build().getStatus();
-      }
-    } catch (InterruptedException e) {
-      e.printStackTrace();
-    } catch (ExecutionException e) {
-      e.printStackTrace();
-    } catch (TimeoutException e) {
-      e.printStackTrace();
-    }
-    return null;
+    return LogMessageAck.newBuilder().setStatus("OK").build().getStatus();
   }
 
-  private ListenableFuture<LogMessageAck> appendMsg(String host, int port, LogMessage msg, int sleep, Executor executor) {
+  private void appendMsg(String host, int port, LogMessage msg, CountDownLatch latch) {
     ManagedChannel channel = ManagedChannelBuilder.forAddress(host, port)
                                                     .usePlaintext()
                                                     .build();
-    AppendMessageServiceGrpc.AppendMessageServiceFutureStub stub = AppendMessageServiceGrpc.newFutureStub(channel);
-    ListenableFuture<LogMessageAck> listenableFuture = stub.append(msg);
-    Futures.addCallback(listenableFuture, new LogMessageCallback(), executor);
+    AppendMessageServiceGrpc.AppendMessageServiceStub stub = AppendMessageServiceGrpc.newStub(channel);
+    stub.append(msg, new LogMessageCallback());
 
-    try {
-      Thread.sleep(sleep);
-    } catch (InterruptedException e) {
-      e.printStackTrace();
-    }
-
-    channel.shutdown();
     try {
       channel.awaitTermination(5000, TimeUnit.MILLISECONDS);
     } catch (InterruptedException ex) {
       // TODO add logic
     }
-    return listenableFuture;
+    try {
+      Thread.sleep(1000);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    }
+    channel.shutdown();
+    latch.countDown();
+  }
+
+  private void appendMsg(String host, int port, LogMessage msg) {
+
+    ManagedChannel channel = ManagedChannelBuilder.forAddress(host, port)
+                                                    .usePlaintext()
+                                                    .build();
+      AppendMessageServiceGrpc.AppendMessageServiceStub stub = AppendMessageServiceGrpc.newStub(channel);
+      stub.append(msg, new LogMessageCallback());
+
+      try {
+        channel.awaitTermination(5000, TimeUnit.MILLISECONDS);
+      } catch (InterruptedException ex) {
+        // TODO add logic
+      }
+      try {
+        Thread.sleep(1000);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
+      channel.shutdown();
   }
 }
